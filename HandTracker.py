@@ -149,7 +149,7 @@ class HandTracker:
 
                     x = (brect[0] + brect[2])/2
                     y = (brect[1] + brect[3])/2
-                    hand_center = [[round(x), round(y)]]
+                    hand_center = (round(x), round(y))
 
                     if self.position_tracking: hand_history.append(hand_center)
 

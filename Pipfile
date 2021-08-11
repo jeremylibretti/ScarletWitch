@@ -59,6 +59,8 @@ PyAudio = "==0.2.11"
 PyAutoGUI = "==0.9.52"
 PyJWT = "==1.7.1"
 Werkzeug = "==2.0.1"
+pynput = "*"
+autopy = "*"
 
 [dev-packages]
 

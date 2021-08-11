@@ -3,6 +3,9 @@ import sys
 import pyautogui
 from HandTracker import HandTracker
 import time
+from pynput.mouse import Button, Controller
+# import autopy
+# import mouse
 
 class Timer:
 
@@ -79,9 +82,10 @@ class ScarletWitch:
     def handle_dynamic_gesture(self, gesture):
         pass
 
-    def handle_gesture(self, pos, tracking):
-        if tracking:
-            pyautogui.moveTo(pos[0][0], pos[0][1])
+    def handle_gesture(self, pos, prev_pos, duration):
+        # pos = pos[0]
+        # prev_pos = prev_pos[0]
+        pyautogui.move(pos[0]-prev_pos[0], pos[1]-prev_pos[1], duration)
             
 
     def run(self, mode):
@@ -99,7 +103,8 @@ class ScarletWitch:
         th.start()
 
         self.running = True
-        # prev_pos = (0, 0)
+        prev_pos = (0, 0)
+        tracking = False
 
         # set stdout
         stdout = sys.stdout
@@ -109,21 +114,45 @@ class ScarletWitch:
         dt = Timer()
         dt.run()
 
+        # controller = mouse.moveEvent()
+
+        # m = mouse
+
         while self.running:
             if ct.elapsed() > 1/60:
-                pos = ht.get_hand_pos()
-                sg = ht.get_static_gesture()
-                dg = ht.get_dynamic_gesture()
+                # pos = ht.get_hand_pos()
+                # sg = ht.get_static_gesture()
+                # dg = ht.get_dynamic_gesture()
+                if not tracking:
+                    prev_pos = ht.get_hand_pos()
+
                 tracking = ht.get_tracking()
 
-                if mode == "Print":
-                    print("Pos: "+str(pos)+"\t SG: "+str(sg)+"\t DG: "+str(dg))
-                elif mode == "Game":
-                    print("Pos: "+str(pos)+"\t SG: "+str(sg)+"\t DG: "+str(dg))
-                    self.handle_gesture(pos, tracking)
+                if tracking:
+                    # delta = current hand - anchor
+                    # move mouse by delta
+                    cur_pos = ht.get_hand_pos()
+                    delta_x = cur_pos[0] - prev_pos[0]
+                    delta_y = cur_pos[1] - prev_pos[1]
+                    pyautogui.move(delta_x, delta_y)
+                    # mouse.press(Button.left)
+                    # cur_mouse = autopy.mouse.location()
+                    # m.move(delta_x, delta_y, False, 0.1)
+                    # m.click('left')
+                    prev_pos = cur_pos
+
+                # if mode == "Print":
+                #     print("Pos: "+str(pos)+"\t SG: "+str(sg)+"\t DG: "+str(dg))
+                # elif mode == "Game":
+                #     # print("Pos: "+str(pos)+"\t SG: "+str(sg)+"\t DG: "+str(dg))
+
 
                 # prev_pos = pos
                 ct.run()
+
+        # Start tracking
+        # Record hand start
+        # Move relative from hand start
 
         # reset stdout
         sys.stdout = stdout
