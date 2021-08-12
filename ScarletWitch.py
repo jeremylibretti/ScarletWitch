@@ -45,8 +45,8 @@ class ScarletWitch:
         th.start()
 
         self.running = True
+
         prev_pos = (0, 0)
-        tracking = False
 
         # set stdout
         stdout = sys.stdout
@@ -54,13 +54,13 @@ class ScarletWitch:
 
         while self.running:
             if ct.elapsed() > 1/60:
-                
-                if not tracking:
+
+                if not self.position_tracking:
                     prev_pos = ht.get_hand_pos()
 
-                tracking = ht.get_tracking()
+                self.position_tracking = ht.get_tracking()
 
-                if tracking:
+                if self.position_tracking:
                     cur_pos = ht.get_hand_pos()
                     delta_x = cur_pos[0] - prev_pos[0]
                     delta_y = cur_pos[1] - prev_pos[1]
