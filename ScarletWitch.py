@@ -5,25 +5,6 @@ import time
 
 from HandTracker import HandTracker
 
-class Timer:
-    def __init__(self):
-        self.init = time.time()
-        self.start = time.time()
-        self.running = False
-
-    def run(self):
-        self.start = time.time()
-        self.running = True
-
-    def stop(self):
-        self.running = False
-
-    def log(self):
-        return f"{time.time() - self.init},"
-
-    def elapsed(self):
-        return time.time() - self.start if self.running else 0
-
 class ScarletWitch:
     def __init__(self, stdout=sys.stdout):
         self.running = False
@@ -79,3 +60,22 @@ class ScarletWitch:
 
     def terminate(self):
         self.running = False
+
+class Timer:
+    def __init__(self):
+        self.init = time.time()
+        self.start = time.time()
+        self.running = False
+
+    def run(self):
+        self.start = time.time()
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def log(self):
+        return f"{time.time() - self.init},"
+
+    def elapsed(self):
+        return time.time() - self.start if self.running else 0
