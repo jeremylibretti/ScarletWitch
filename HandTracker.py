@@ -1,5 +1,6 @@
 import csv
 import copy
+import argparse
 import itertools
 from collections import Counter
 from collections import deque
@@ -13,47 +14,44 @@ from model import KeyPointClassifier
 from model import PointHistoryClassifier
 
 class HandTracker:
-    def __init__(self, use_static_image_mode, min_detection_confidence, min_tracking_confidence, debug=False):
-        self._cap = cv.VideoCapture(0) # initialize video capture
+    def __init__(self, debug=False):
         self.mp_hands = mp.solutions.hands
 
         self.running = False
-        self.debug   = debug
+        self.debug = debug
 
         self.static_gesture = 0
         self.dynamic_gesture = 0
         self.hand_pos = (0, 0)
 
-        self.use_static_image_mode = use_static_image_mode
-        self.min_detection_confidence = min_detection_confidence
-        self.min_tracking_confidence = min_tracking_confidence
-
         self.position_tracking = False
 
     def run(self):
-        cvFpsCalc = CvFpsCalc(buffer_len=10)
+        # Argument parsing #################################################################
+        args = self.get_args()
 
-        self.running = True
+        cap_device = args.device
+        cap_width = args.width
+        cap_height = args.height
+
+        use_static_image_mode = args.use_static_image_mode
+        min_detection_confidence = args.min_detection_confidence
+        min_tracking_confidence = args.min_tracking_confidence
+
+        use_brect = True
+
+        # Camera preparation ###############################################################
+        cap = cv.VideoCapture(cap_device)
+        cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
+        cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
         # Model load #############################################################
         hands = self.mp_hands.Hands(
-            static_image_mode=self.use_static_image_mode,
+            static_image_mode=use_static_image_mode,
             max_num_hands=1,
-            min_detection_confidence=self.min_detection_confidence,
-            min_tracking_confidence=self.min_tracking_confidence,
+            min_detection_confidence=min_detection_confidence,
+            min_tracking_confidence=min_tracking_confidence,
         )
-
-        # Coordinate history #################################################################
-        history_length = 16
-        point_history = deque(maxlen=history_length)
-
-        keypoint_classifier = KeyPointClassifier()
-
-        point_history_classifier = PointHistoryClassifier()
-
-        hand_history = deque()
-
-        finger_gesture_history = deque(maxlen=history_length)
 
         # Read labels ###########################################################
         with open('model/keypoint_classifier/keypoint_classifier_label.csv',
@@ -70,13 +68,27 @@ class HandTracker:
                 row[0] for row in point_history_classifier_labels
             ]
 
-        # position_tracking = False
+        # FPS Measurement ########################################################
+        cvFpsCalc = CvFpsCalc(buffer_len=10)
+
+        # Coordinate/gesture history #################################################################
+        history_length = 16
+        
+        point_history = deque(maxlen=history_length)
+        finger_gesture_history = deque(maxlen=history_length)
         hand_history = deque()
+
+        keypoint_classifier = KeyPointClassifier()
+
+        point_history_classifier = PointHistoryClassifier()
 
     ###              ###
     ### Main Process ###
     ###              ###
-        while self.running and self._cap.isOpened():
+        self.running = True
+        mode = 0
+
+        while self.running and cap.isOpened():
         # Initialization
             fps = cvFpsCalc.get()
 
@@ -84,13 +96,13 @@ class HandTracker:
             key = cv.waitKey(10)
             if key == 27:  # ESC
                 break
-            #number, mode = self.select_mode(key, mode)
+            number, mode = self.select_mode(key, mode)
 
         ###           ###
         ### GET IMAGE ###
         ###           ###
             # Camera capture #####################################################
-            success, image = self._cap.read()
+            success, image = cap.read()
             if not success:
                 continue
             image = cv.flip(image, 1)  # Mirror display
@@ -108,7 +120,11 @@ class HandTracker:
         ###                           ###
             #  ####################################################################
             if results.multi_hand_landmarks is not None:
-                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, 
+                                                      results.multi_handedness):
+
+                    # Bounding box calculation
+                    brect = self.calc_bounding_rect(debug_image, hand_landmarks)
 
                     # Landmark calculation
                     landmark_list = self.calc_landmark_list(debug_image, hand_landmarks)
@@ -118,7 +134,8 @@ class HandTracker:
                     pre_processed_point_history_list = self.pre_process_point_history(debug_image, point_history)
                     
                     # Write to the dataset file
-                    # self.logging_csv(number, mode, pre_processed_landmark_list, pre_processed_point_history_list)
+                    self.logging_csv(number, mode, pre_processed_landmark_list, 
+                                     pre_processed_point_history_list)
 
             ##### Static Gesture Calculation
                     # Hand sign classification [0: Open, 1: Closed, 2: Pointer, 3: OK]
@@ -164,7 +181,7 @@ class HandTracker:
             else:
                 point_history.append([0, 0])
 
-        self._cap.release()
+        cap.release()
 
     def get_static_gesture(self):
         return self.static_gesture
@@ -180,6 +197,23 @@ class HandTracker:
 
     def terminate(self):
         self.running = False
+
+    def calc_bounding_rect(self, image, landmarks):
+        image_width, image_height = image.shape[1], image.shape[0]
+
+        landmark_array = np.empty((0, 2), int)
+
+        for _, landmark in enumerate(landmarks.landmark):
+            landmark_x = min(int(landmark.x * image_width), image_width - 1)
+            landmark_y = min(int(landmark.y * image_height), image_height - 1)
+
+            landmark_point = [np.array((landmark_x, landmark_y))]
+
+            landmark_array = np.append(landmark_array, landmark_point, axis=0)
+
+        x, y, w, h = cv.boundingRect(landmark_array)
+
+        return [x, y, x + w, y + h]
 
     def calc_landmark_list(self, image, landmarks):
         image_width, image_height = image.shape[1], image.shape[0]
@@ -286,3 +320,24 @@ class HandTracker:
         x, y, w, h = cv.boundingRect(landmark_array)
 
         return [x, y, x + w, y + h]
+
+    def get_args(self):
+        parser = argparse.ArgumentParser()
+
+        parser.add_argument("--device", type=int, default=0)
+        parser.add_argument("--width", help='cap width', type=int, default=960)
+        parser.add_argument("--height", help='cap height', type=int, default=540)
+
+        parser.add_argument('--use_static_image_mode', action='store_true')
+        parser.add_argument("--min_detection_confidence",
+                            help='min_detection_confidence',
+                            type=float,
+                            default=0.7)
+        parser.add_argument("--min_tracking_confidence",
+                            help='min_tracking_confidence',
+                            type=int,
+                            default=0.5)
+
+        args = parser.parse_args()
+
+        return args

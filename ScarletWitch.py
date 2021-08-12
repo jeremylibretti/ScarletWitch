@@ -21,7 +21,7 @@ class ScarletWitch:
         ct.run()
 
         # initialize handtracker and run thread
-        ht = HandTracker(False, 0.7, 0.5)
+        ht = HandTracker(False)
         th = Thread(target=ht.run, name='webcam')
         th.start()
 
