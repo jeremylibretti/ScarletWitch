@@ -1,15 +1,16 @@
-from app import get_args
-from utils import CvFpsCalc
-import cv2 as cv
-import mediapipe as mp
+import csv
 import copy
 import itertools
+from collections import Counter
 from collections import deque
-import csv
+
+import cv2 as cv
+import numpy as np
+import mediapipe as mp
+
+from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
-from collections import Counter
-import numpy as np
 
 class HandTracker:
     def __init__(self, use_static_image_mode, min_detection_confidence, min_tracking_confidence, debug=False):
@@ -189,7 +190,6 @@ class HandTracker:
         for _, landmark in enumerate(landmarks.landmark):
             landmark_x = min(int(landmark.x * image_width), image_width - 1)
             landmark_y = min(int(landmark.y * image_height), image_height - 1)
-            # landmark_z = landmark.z
 
             landmark_point.append([landmark_x, landmark_y])
 
