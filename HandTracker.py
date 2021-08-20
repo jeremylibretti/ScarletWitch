@@ -71,9 +71,10 @@ class HandTracker:
         cvFpsCalc = CvFpsCalc(buffer_len=10)
 
         # Coordinate/gesture history #################################################################
-        history_length = 16
+        # point_history_length = 128
+        history_length = 128
         
-        point_history = deque(maxlen=history_length)
+        point_history = deque(maxlen=history_length*21)
         finger_gesture_history = deque(maxlen=history_length)
         hand_history = deque()
 
@@ -137,7 +138,10 @@ class HandTracker:
 
                     # Conversion to relative coordinates / normalized coordinates
                     pre_processed_landmark_list = self.pre_process_landmark(landmark_list)
-                    pre_processed_point_history_list = self.pre_process_point_history(debug_image, point_history)
+                    
+                    pre_processed_point_history_list = list()
+                    for index in range(len(point_history)):
+                        pre_processed_point_history_list += self.pre_process_point_history(debug_image, point_history[index])
                     
                     # Write to the dataset file
                     self.logging_csv(number, mode, pre_processed_landmark_list, 
@@ -146,11 +150,11 @@ class HandTracker:
             ##### Static Gesture Calculation
                     # Hand sign classification [0: Open, 1: Closed, 2: Pointer, 3: OK]
                     hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                    if hand_sign_id == 2:  # Point gesture
-                        point_history.append(landmark_list[8])
-                    else:
-                        point_history.append([0, 0])
                     
+                    # Add hand landmarks to history
+                    point_history.append(landmark_list)
+                    
+                    # Update position-tracking state
                     if not self.position_tracking and hand_sign_id == 1: # Closed hand
                         self.position_tracking = True
                     elif self.position_tracking and hand_sign_id != 1:
@@ -202,7 +206,7 @@ class HandTracker:
                 point_history.append([0, 0])
 
             if use_training_mode:
-                debug_image = self.draw_point_history(debug_image, point_history)
+                #debug_image = self.draw_point_history(debug_image, point_history)
                 debug_image = self.draw_info(debug_image, fps, mode, number)
 
             # Display Frame #############################################################
@@ -278,6 +282,9 @@ class HandTracker:
             itertools.chain.from_iterable(temp_point_history))
 
         return temp_point_history
+
+    def pre_process_point_history_main(self, image, point_history):
+        pass
 
     def pre_process_landmark(self, landmark_list):
         temp_landmark_list = copy.deepcopy(landmark_list)
