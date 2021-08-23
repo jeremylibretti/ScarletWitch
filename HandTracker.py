@@ -74,7 +74,7 @@ class HandTracker:
         # point_history_length = 128
         history_length = 128
         
-        point_history = deque(maxlen=history_length*21)
+        point_history = deque(maxlen=history_length)
         finger_gesture_history = deque(maxlen=history_length)
         hand_history = deque()
 
@@ -126,6 +126,8 @@ class HandTracker:
         ### GET GESTURES AND POSITION ###
         ###                           ###
             #  ####################################################################
+            empty_landmarks = [[0, 0] for x in range(21)]
+
             if results.multi_hand_landmarks is not None:
                 for hand_landmarks, handedness in zip(results.multi_hand_landmarks, 
                                                       results.multi_handedness):
@@ -136,12 +138,16 @@ class HandTracker:
                     # Landmark calculation
                     landmark_list = self.calc_landmark_list(debug_image, hand_landmarks)
 
+                    # Add hand landmarks to history
+                    point_history.append(landmark_list)
+
                     # Conversion to relative coordinates / normalized coordinates
                     pre_processed_landmark_list = self.pre_process_landmark(landmark_list)
                     
                     pre_processed_point_history_list = list()
                     for index in range(len(point_history)):
-                        pre_processed_point_history_list += self.pre_process_point_history(debug_image, point_history[index])
+                        landmarks = self.pre_process_landmark(point_history[index])
+                        pre_processed_point_history_list += landmarks
                     
                     # Write to the dataset file
                     self.logging_csv(number, mode, pre_processed_landmark_list, 
@@ -150,9 +156,6 @@ class HandTracker:
             ##### Static Gesture Calculation
                     # Hand sign classification [0: Open, 1: Closed, 2: Pointer, 3: OK]
                     hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                    
-                    # Add hand landmarks to history
-                    point_history.append(landmark_list)
                     
                     # Update position-tracking state
                     if not self.position_tracking and hand_sign_id == 1: # Closed hand
@@ -203,7 +206,7 @@ class HandTracker:
                         )
 
             else:
-                point_history.append([0, 0])
+                point_history.append(empty_landmarks)
 
             if use_training_mode:
                 #debug_image = self.draw_point_history(debug_image, point_history)
@@ -283,9 +286,6 @@ class HandTracker:
 
         return temp_point_history
 
-    def pre_process_point_history_main(self, image, point_history):
-        pass
-
     def pre_process_landmark(self, landmark_list):
         temp_landmark_list = copy.deepcopy(landmark_list)
 
@@ -306,7 +306,7 @@ class HandTracker:
         max_value = max(list(map(abs, temp_landmark_list)))
 
         def normalize_(n):
-            return n / max_value
+            return n / max_value if max_value > 0 else 0
 
         temp_landmark_list = list(map(normalize_, temp_landmark_list))
 
