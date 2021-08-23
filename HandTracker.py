@@ -75,7 +75,7 @@ class HandTracker:
         history_length = 128
         
         point_history = deque(maxlen=history_length)
-        finger_gesture_history = deque(maxlen=history_length)
+        dynamic_gesture_history = deque(maxlen=history_length)
         hand_history = deque()
 
         keypoint_classifier = KeyPointClassifier()
@@ -165,15 +165,15 @@ class HandTracker:
                         hand_history.clear()
 
             ##### Dynamic Gesture Calculation
-                    # Finger gesture classification
-                    finger_gesture_id = 0
+                    # Dynamic gesture classification
+                    dynamic_gesture_id = 0
                     point_history_len = len(pre_processed_point_history_list)
                     if point_history_len == (history_length * 2):
-                        finger_gesture_id = point_history_classifier(pre_processed_point_history_list)
+                        dynamic_gesture_id = point_history_classifier(pre_processed_point_history_list)
                         
                     # Calculates the gesture IDs in the latest detection
-                    finger_gesture_history.append(finger_gesture_id)
-                    most_common_fg_id = Counter(finger_gesture_history).most_common()
+                    dynamic_gesture_history.append(dynamic_gesture_id)
+                    most_common_fg_id = Counter(dynamic_gesture_history).most_common()
 
             ##### Hand Position Calculation
                     brect = self.calc_bounding_rect(debug_image, hand_landmarks)
