@@ -174,6 +174,7 @@ class HandTracker:
                     # Calculates the gesture IDs in the latest detection
                     dynamic_gesture_history.append(dynamic_gesture_id)
                     most_common_fg_id = Counter(dynamic_gesture_history).most_common()
+                    if dynamic_gesture_id == 1: print("SUCCESS")
 
             ##### Hand Position Calculation
                     brect = self.calc_bounding_rect(debug_image, hand_landmarks)
@@ -202,7 +203,8 @@ class HandTracker:
                             brect,
                             handedness,
                             keypoint_classifier_labels[hand_sign_id],
-                            point_history_classifier_labels[most_common_fg_id[0][0]],
+                            # point_history_classifier_labels[most_common_fg_id[0][0]],
+                            point_history_classifier_labels[dynamic_gesture_id]
                         )
 
             else:
