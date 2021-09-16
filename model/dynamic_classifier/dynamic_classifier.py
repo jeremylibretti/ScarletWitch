@@ -4,10 +4,10 @@ import numpy as np
 import tensorflow as tf
 
 
-class PointHistoryClassifier(object):
+class DynamicClassifier(object):
     def __init__(
         self,
-        model_path='model/point_history_classifier/point_history_classifier.tflite',
+        model_path='model/dynamic_classifier/dynamic_classifier.tflite',
         score_th=0.5,
         invalid_value=0,
         num_threads=1,
