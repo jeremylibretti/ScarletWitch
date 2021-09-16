@@ -47,6 +47,8 @@ class ScarletWitch:
 
         empty_landmarks = [[0, 0] for x in range(21)]
 
+        dynamic_data_sum = 0
+
     # Argument deconstruction
         cap_device = self.args.device
         cap_width = self.args.width
@@ -175,7 +177,8 @@ class ScarletWitch:
                     # Dynamic
                     if (self.training_mode==2) and (len(landmark_history)>0) and (not self.record):
                         self.log_csv(self.label_id, pre_processed_landmark_history_list)
-                        print("Wrote dynamic data")
+                        dynamic_data_sum += 1
+                        print("Wrote dynamic data: " + str(dynamic_data_sum))
                         landmark_history.clear()
 
         # Gesture classification

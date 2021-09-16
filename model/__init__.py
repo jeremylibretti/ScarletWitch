@@ -1,2 +1,2 @@
-from model.keypoint_classifier.keypoint_classifier import KeyPointClassifier
-from model.point_history_classifier.point_history_classifier import PointHistoryClassifier
+from model.static_classifier.static_classifier import StaticClassifier
+from model.dynamic_classifier.dynamic_classifier import DynamicClassifier
