@@ -10,7 +10,9 @@ import pyautogui
 import win32gui
 import win32con
 import math
+import time, os
 
+import mediapipe as mp
 import cv2 as cv
 import numpy as np
 
@@ -31,12 +33,15 @@ class ScarletWitch:
         self.hand_pos_tracking = False
         self.mode_view = True
         self.training = False
-        self.training_mode = 0
+        self.training_mode = 1
         self.label_id = -1
         self.record = False
         self.prev = (0, 0)
         self.curr = (0, 0)
         self.last_key = ""
+        self.actions = ['open', 'closed', 'pointer', 'ok', 'peace', 'thumbs up']
+        self.datasets = [[] for i in range(10)]
+        self.last_label = 0
 
         keyboard.add_hotkey('.', self.terminate)
 
@@ -45,16 +50,13 @@ class ScarletWitch:
     def run(self):
         self.running = True
 
-        empty_landmarks = [[0, 0] for x in range(21)]
-
-        dynamic_data_sum = 0
+        created_time = int(time.time())
+        os.makedirs('dataset', exist_ok=True)
 
     # Argument deconstruction
         cap_device = self.args.device
         cap_width = self.args.width
         cap_height = self.args.height
-
-        self.training = self.args.use_training_mode
 
         use_brect = True
 
@@ -69,22 +71,11 @@ class ScarletWitch:
         sys.stdout = self.stdout
 
     # Manage Windows
-        if not self.training:
-            self.w.find_window_wildcard(".*Minecraft 1.9.*")
-            if self.w.get_handle() != None:
-                self.w.set_foreground()
-                self.w.maximize()
 
-        winname = "Scarlet Witch"
-        if self.training:
-            winname += " Data Collection"
-        win_dims = [640, 360]
-        win_width = 640
-        win_height = 360
-        if self.training:
-            win_dims = [1280, 720]
-            win_width = 1280
-            win_height = 720
+        winname = "Scarlet Witch Data Collection"
+        win_dims = [1280, 720]
+        win_width = 1280
+        win_height = 720
 
         cv.namedWindow(winname, cv.WINDOW_NORMAL)
         cv.resizeWindow(winname, win_dims[0], win_dims[1])
@@ -94,17 +85,12 @@ class ScarletWitch:
         if self.w.get_handle() != None:
             win32gui.SetWindowPos(self.w.get_handle(), win32con.HWND_TOPMOST, 0,0,0,0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
 
-    # Coordinate history
-        dynamic_data_length = math.ceil((self.get_data_length()-1)/42)
-        history_length = max(dynamic_data_length, 128)
-        if self.training:
-            history_length = None
-        landmark_history = deque(maxlen=history_length)
-
     # Create HandTracker, GestureClassifier
         tracker = HandTracker(self.args, vs).start()
-        classifier = GestureClassifier(history_length)
-        dynamic_gesture_label = ""
+
+    # MediaPipe hands model
+        mp_hands = mp.solutions.hands
+        mp_drawing = mp.solutions.drawing_utils
 
     # Main Loop
         while self.running:
@@ -112,8 +98,10 @@ class ScarletWitch:
             fps = cvFpsCalc.get()
 
         # Process Key
-            if self.training_mode != 2:
-                self.label_id = -1
+            # if self.training_mode != 2:
+            #     self.label_id = -1
+
+            self.label_id = -1
 
             key = cv.waitKey(10)
 
@@ -122,21 +110,22 @@ class ScarletWitch:
             else:
                 self.last_key = ""
 
-            if key == 27:  # ESC
-                self.last_key = "ESC"
-                self.terminate()
-            if key == 110: # n
-                self.training_mode = 0
-            if key == 115: # s
-                self.training_mode = 1
-            if key == 100: # d
-                self.training_mode = 2
+            if key == 113:  # q
+                self.last_key = "q"
+                self.terminate(created_time)
+            # if key == 110: # n
+            #     self.training_mode = 0
+            # if key == 115: # s
+            #     self.training_mode = 1
 
             if 48 <= key <= 57:  # 0 ~ 9
                 self.label_id = key - 48
+                self.last_label = self.label_id
 
-            if self.training_mode == 2 and key == 114: # r
-                self.record = not self.record
+            # if key == 114: # r
+            #     self.record = True
+            # else:
+            #     self.record = False
 
         # Camera capture
             image = vs.read()
@@ -147,64 +136,46 @@ class ScarletWitch:
 
         # Landmark processing
             if tracking_results.multi_hand_landmarks is not None:
-                for hand_landmarks, handedness in zip(tracking_results.multi_hand_landmarks, 
-                                                        tracking_results.multi_handedness):
+                # for hand_landmarks, handedness in zip(tracking_results.multi_hand_landmarks, 
+                #                                         tracking_results.multi_handedness):
+                for hand_landmarks in tracking_results.multi_hand_landmarks:
+
                 # Bounding box calculation
                     self.brect = self.calc_bounding_rect(debug_image, hand_landmarks)
 
                 # Landmark calculation
-                    landmark_list = self.calc_landmark_list(debug_image, hand_landmarks)
+                    joint = np.zeros((21, 4))
+                    for j, lm in enumerate(hand_landmarks.landmark):
+                        joint[j] = [lm.x, lm.y, lm.z, lm.visibility]
 
-                    if self.training and self.record:
-                        landmark_history.append(landmark_list)
-                        # print("Added to landmark history")
-                    elif not self.training:
-                        landmark_history.append(landmark_list)
-                        # print("Added to landmark history")
+                    # Compute angles between joints
+                    v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
+                    v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
+                    v = v2 - v1 # [20, 3]
+                    # Normalize v
+                    v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
 
-                # Conversion to relative coordinates / normalized coordinates
-                    pre_processed_landmark_list = self.pre_process_landmark(landmark_list)
+                    # Get angle using arcos of dot product
+                    angle = np.arccos(np.einsum('nt,nt->n',
+                        v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
+                        v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
 
-                    pre_processed_landmark_history_list = self.pre_process_landmark_history(landmark_history)
+                    angle = np.degrees(angle) # Convert radian to degree
 
-                # Write to the dataset file
-                    # Static
-                    if self.training_mode==1 and self.label_id>=0:
-                        self.log_csv(self.label_id, pre_processed_landmark_list)
-                        print("Wrote static data")
+                    angle_label = np.array([angle], dtype=np.float32)
+                    angle_label = np.append(angle_label, self.label_id)
 
-                    # Dynamic
-                    if (self.training_mode==2) and (len(landmark_history)>0) and (not self.record):
-                        self.log_csv(self.label_id, pre_processed_landmark_history_list)
-                        dynamic_data_sum += 1
-                        print("Wrote dynamic data: " + str(dynamic_data_sum))
-                        landmark_history.clear()
+                    d = np.concatenate([joint.flatten(), angle_label])
 
-        # Gesture classification
-                    if not self.training:
-                    # Static
-                        static_gesture_id, static_gesture_label = classifier.classify_static(pre_processed_landmark_list)
-
-                    # Dynamic
-                        dynamic_gesture_id, dynamic_gesture_label = classifier.classify_dynamic(pre_processed_landmark_history_list)
-
-        # Gesture handling
-                        self.handle_gestures(static_gesture_id, dynamic_gesture_id)
+                    if self.label_id >= 0:
+                        self.datasets[self.label_id].append(d)
+                        print("added to dataset")
 
         # Image Drawing
+                    mp_drawing.draw_landmarks(debug_image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                     debug_image = self.draw_bounding_rect(use_brect, debug_image,self.brect)
-                    debug_image = self.draw_landmarks(debug_image, landmark_list)
-
-                    if not self.training:
-                        debug_image = self.draw_hand_info(debug_image, self.brect, handedness, static_gesture_label)
-
-            else:
-                if self.training and self.record:
-                    landmark_history.append(empty_landmarks)
-                elif not self.training:
-                    landmark_history.append(empty_landmarks)
         
-            debug_image = self.draw_window_info(debug_image, win_dims, fps, dynamic_gesture_label)
+            debug_image = self.draw_window_info(debug_image, win_dims, fps)
             cv.imshow(winname, debug_image)
 
     # Shutdown
@@ -216,7 +187,15 @@ class ScarletWitch:
     # Reset stdout
         sys.stdout = stdout
 
-    def terminate(self):
+    def terminate(self, time):
+        # Write to the dataset files
+        # Static
+        for d in range(len(self.datasets)):
+            data = self.datasets[d]
+            if len(data) > 0:
+                data = np.array(data)
+                np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
+                print("Wrote static data")
         self.running = False
 
     def draw_hand_info(self, image, brect, handedness, static_gesture_text):
@@ -231,37 +210,26 @@ class ScarletWitch:
 
         return image
     
-    def draw_window_info(self, image, dimensions, fps, dynamic_gesture_text):
+    def draw_window_info(self, image, dimensions, fps):
         # FPS
         cv.putText(image, "FPS:" + str(fps), (10, 35), cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-        if self.training:
-            # Training
-            training_text = ["Off", "Static", "Dynamic"]
-            cv.putText(image, "Training: " + training_text[self.training_mode], (10, 70),
-                    cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        # Training
+        training_text = ["Off", "Static", "Dynamic"]
+        cv.putText(image, "Training: " + training_text[self.training_mode], (10, 70),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-            # Label id
-            cv.putText(image, "Label ID: " + str(self.label_id), (10, 110),
-                    cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        # Label id
+        cv.putText(image, "Label ID: " + str(self.label_id) + "", (10, 110),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-            # Recording dynamic gesture
-            if self.record:
-                cv.putText(image, "RECORDING", (10, 145),
-                        cv.FONT_HERSHEY_DUPLEX, 1.0, (0, 0, 255), 1, cv.LINE_AA)
+        # Recording dynamic gesture
+        cv.putText(image, "Sum: " + str(len(self.datasets[self.last_label])) + "", (10, 145),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-            # Key Press
-            cv.putText(image, self.last_key, (dimensions[0] - 35, 35),
-                    cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
-        else:
-            # Control mode
-            mode_text = "View" if self.mode_view else "Movement"
-            cv.putText(image, "Control Mode: " + mode_text, (10, 70),
-                    cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
-
-            # Dynamic gesture
-            cv.putText(image, "Dynamic Gesture: " + dynamic_gesture_text, (10, 105),
-                    cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        # Key Press
+        cv.putText(image, self.last_key, (dimensions[0] - 35, 35),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
         return image
 

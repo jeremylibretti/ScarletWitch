@@ -2,6 +2,7 @@
 
 import scarletwitch
 import argparse
+import create_static_dataset
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -30,6 +31,9 @@ def main():
 
     # ScarletWitch creation
     device = scarletwitch.ScarletWitch(args)
+
+    if args.use_training_mode:
+        device = create_static_dataset.ScarletWitch(args)
 
     # ScarletWitch run
     device.run()
