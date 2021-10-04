@@ -167,6 +167,8 @@ class ScarletWitch:
 
                     d = np.concatenate([joint.flatten(), angle_label])
 
+                    print(len(d))
+
                     if self.label_id >= 0:
                         self.datasets[self.label_id].append(d)
                         print("added to dataset")
@@ -190,12 +192,12 @@ class ScarletWitch:
     def terminate(self, time):
         # Write to the dataset files
         # Static
-        for d in range(len(self.datasets)):
-            data = self.datasets[d]
-            if len(data) > 0:
-                data = np.array(data)
-                np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
-                print("Wrote static data")
+        # for d in range(len(self.datasets)):
+        #     data = self.datasets[d]
+        #     if len(data) > 0:
+        #         data = np.array(data)
+        #         np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
+        #         print("Wrote static data")
         self.running = False
 
     def draw_hand_info(self, image, brect, handedness, static_gesture_text):
