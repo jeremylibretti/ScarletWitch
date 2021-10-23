@@ -33,7 +33,7 @@ class ScarletWitch:
         self.hand_pos_tracking = False
         self.mode_view = True
         self.training = False
-        self.training_mode = 1
+        self.training_mode = 2
         self.label_id = -1
         self.record = False
         self.prev = (0, 0)
@@ -94,6 +94,7 @@ class ScarletWitch:
         mp_hands = mp.solutions.hands
         mp_drawing = mp.solutions.drawing_utils
 
+        print("beginning of main loop")
     # Main Loop
         while self.running:
         # Get fps
@@ -101,8 +102,8 @@ class ScarletWitch:
 
         # Process Key
 
-            if not self.record:
-                self.label_id = -1
+            # if not self.record:
+            #     self.label_id = -1
 
             key = cv.waitKey(10)
 
@@ -124,8 +125,15 @@ class ScarletWitch:
                 start_time = time.time()
                 self.datasets[self.label_id].append([])
 
-            if time.time() - start_time < self.secs_for_action:
-                self.record = False
+            if key == 122: # z
+                self.label_id = -1
+
+            if self.record:
+                times_up = (time.time() - start_time) > self.secs_for_action
+                data_too_long = len(self.datasets[self.label_id][-1]) > self.secs_for_action*30
+                if times_up or data_too_long:
+                    print(len(self.datasets[self.label_id][-1]))
+                    self.record = False
 
         # Camera capture
             image = vs.read()
@@ -199,14 +207,22 @@ class ScarletWitch:
 
         # Dynamic
         for d in range(len(self.datasets)):
-            data = np.array(self.datasets)
-            # print(action, data.shape)
-            np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
+            data = self.datasets[d]
+            if len(data) > 0:
+                data = np.array(data)
+                # print(action, data.shape)
+                np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
 
-            # Create sequence data
-            full_seq_data = np.array(self.datasets[d])
-            # print(action, full_seq_data.shape)
-            np.save(os.path.join('dataset', f'seq_{self.actions[d]}_{time}'), full_seq_data)
+                # Create sequence data
+                full_seq_data = []
+                for seq in range(len(data)):
+                    full_seq_data.append(data[seq])
+                
+                full_seq_data = np.array(full_seq_data)
+                # print(action, full_seq_data.shape)
+                np.save(os.path.join('dataset', f'seq_{self.actions[d]}_{time}'), full_seq_data)
+
+                print("wrote dynamic data")
 
         self.running = False
 
@@ -248,7 +264,7 @@ class ScarletWitch:
                 cv.putText(image, "RECORDING: ", (10, 180),
                         cv.FONT_HERSHEY_DUPLEX, 1.0, (0, 0, 255), 1, cv.LINE_AA)
                 time_left = self.secs_for_action - (time.time() - start_time)
-                cv.putText(image, str(time_left), (30, 180), cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+                cv.putText(image, str(time_left), (15, 205), cv.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1, cv.LINE_AA)
 
         return image
 

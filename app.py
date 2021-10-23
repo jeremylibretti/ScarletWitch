@@ -3,6 +3,7 @@
 import scarletwitch
 import argparse
 import create_static_dataset
+import create_dynamic_dataset
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -11,7 +12,8 @@ def get_args():
     parser.add_argument("--width", help='cap width', type=int, default=854)
     parser.add_argument("--height", help='cap height', type=int, default=480)
 
-    parser.add_argument('--use_training_mode', action='store_true')
+    parser.add_argument('--train_static', action='store_true')
+    parser.add_argument('--train_dynamic', action='store_true')
     parser.add_argument("--min_detection_confidence",
                         help='min_detection_confidence',
                         type=float,
@@ -32,8 +34,10 @@ def main():
     # ScarletWitch creation
     device = scarletwitch.ScarletWitch(args)
 
-    if args.use_training_mode:
+    if args.train_static:
         device = create_static_dataset.ScarletWitch(args)
+    elif args.train_dynamic:
+        device = create_dynamic_dataset.ScarletWitch(args)
 
     # ScarletWitch run
     device.run()
