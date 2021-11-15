@@ -41,8 +41,10 @@ class ScarletWitch:
         self.last_key = ""
         self.actions = ["none", "click", "double click"]
         self.secs_for_action = 2
+        self.seq_length = self.secs_for_action*30
         self.datasets = [[] for i in range(len(self.actions))]
         self.last_label = 0
+        self.min_freq = self.secs_for_action*30
 
         keyboard.add_hotkey('.', self.terminate)
 
@@ -130,9 +132,7 @@ class ScarletWitch:
 
             if self.record:
                 times_up = (time.time() - start_time) > self.secs_for_action
-                data_too_long = len(self.datasets[self.label_id][-1]) > self.secs_for_action*30
-                if times_up or data_too_long:
-                    print(len(self.datasets[self.label_id][-1]))
+                if times_up:
                     self.record = False
 
         # Camera capture
@@ -197,15 +197,19 @@ class ScarletWitch:
 
     def terminate(self, time):
         # Write to the dataset files
-        # Static
-        # for d in range(len(self.datasets)):
-        #     data = self.datasets[d]
-        #     if len(data) > 0:
-        #         data = np.array(data)
-        #         np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
-        #         print("Wrote static data")
+        
+        # Find length of shortest string of data
+        for d in range(len(self.datasets)):
+            data = self.datasets[d]
+            if len(data) > 0:
+                for seq in range(len(data)):
+                    seq_data = data[seq]
+                    if len(seq_data) < self.min_freq:
+                        self.min_freq = len(seq_data)
 
-        # Dynamic
+        self.min_freq = math.floor(self.min_freq*0.95)
+
+        # Write files
         for d in range(len(self.datasets)):
             data = self.datasets[d]
             if len(data) > 0:
@@ -216,13 +220,17 @@ class ScarletWitch:
                 # Create sequence data
                 full_seq_data = []
                 for seq in range(len(data)):
-                    full_seq_data.append(data[seq])
+                    seq_data = data[seq]
+                    seq_data = seq_data[0: self.min_freq]
+                    full_seq_data.append(seq_data)
                 
                 full_seq_data = np.array(full_seq_data)
                 # print(action, full_seq_data.shape)
                 np.save(os.path.join('dataset', f'seq_{self.actions[d]}_{time}'), full_seq_data)
 
                 print("wrote dynamic data")
+
+        print("min_freq = " + str(self.min_freq))
 
         self.running = False
 

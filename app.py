@@ -12,8 +12,8 @@ def get_args():
     parser.add_argument("--width", help='cap width', type=int, default=854)
     parser.add_argument("--height", help='cap height', type=int, default=480)
 
-    parser.add_argument('--train_static', action='store_true')
-    parser.add_argument('--train_dynamic', action='store_true')
+    parser.add_argument('--collect_static', action='store_true')
+    parser.add_argument('--collect_dynamic', action='store_true')
     parser.add_argument("--min_detection_confidence",
                         help='min_detection_confidence',
                         type=float,
@@ -34,9 +34,9 @@ def main():
     # ScarletWitch creation
     device = scarletwitch.ScarletWitch(args)
 
-    if args.train_static:
+    if args.collect_static:
         device = create_static_dataset.ScarletWitch(args)
-    elif args.train_dynamic:
+    elif args.collect_dynamic:
         device = create_dynamic_dataset.ScarletWitch(args)
 
     # ScarletWitch run

@@ -50,7 +50,7 @@ class ScarletWitch:
         cap_width = self.args.width
         cap_height = self.args.height
 
-        self.training = self.args.use_training_mode
+        self.training = self.args.collect_static or self.args.collect_dynamic
 
         use_brect = True
 
