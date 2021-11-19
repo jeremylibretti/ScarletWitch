@@ -225,7 +225,7 @@ class ScarletWitch:
         cv.putText(image, "Label ID: " + str(self.label_id) + "", (10, 110),
                 cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-        # Recording dynamic gesture
+        # Number of times recorded
         cv.putText(image, "Sum: " + str(len(self.datasets[self.last_label])) + "", (10, 145),
                 cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 

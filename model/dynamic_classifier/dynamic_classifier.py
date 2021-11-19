@@ -27,9 +27,10 @@ class DynamicClassifier(object):
         point_history,
     ):
         input_details_tensor_index = self.input_details[0]['index']
+        input_data = np.array([point_history], dtype=np.float32)
         self.interpreter.set_tensor(
             input_details_tensor_index,
-            np.array([point_history], dtype=np.float32))
+            input_data)
         self.interpreter.invoke()
 
         output_details_tensor_index = self.output_details[0]['index']

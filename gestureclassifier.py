@@ -29,15 +29,16 @@ class GestureClassifier:
             ]
 
         self.static_classifier = StaticClassifier()
-        self.dynamic_classifier = DynamicClassifier()
+        self.dynamic_classifier = DynamicClassifier(score_th=0.9)
 
         self.history_length = history_length
-        self.dynamic_gesture_history = deque(maxlen=self.history_length)
+        self.dynamic_gesture_history = deque([0 for x in range(self.history_length)], maxlen=self.history_length)
 
     def classify_static(self, landmarks):
         ##### Static Gesture Calculation
         # Hand sign classification [0: Open, 1: Closed, 2: Pointer, 3: OK]
         static_gesture_id = self.static_classifier(landmarks)
+        print(static_gesture_id)
         
         return static_gesture_id, self.static_classifier_labels[static_gesture_id]
 
@@ -45,15 +46,15 @@ class GestureClassifier:
         ##### Dynamic Gesture Calculation
         # Dynamic gesture classification
         dynamic_gesture_id = 0
-        landmark_history_len = len(landmark_history)
-        if landmark_history_len == (self.history_length * 2):
-            dynamic_gesture_id = self.dynamic_classifier(landmark_history)
+        classification = self.dynamic_classifier(landmark_history)
+        # print(classification)
             
         # Calculates the gesture IDs in the latest detection
-        self.dynamic_gesture_history.append(dynamic_gesture_id)
-        most_common_dg_id = Counter(self.dynamic_gesture_history).most_common()
+        self.dynamic_gesture_history.append(classification)
+        if self.dynamic_gesture_history[-1] == self.dynamic_gesture_history[-2] == self.dynamic_gesture_history[-3]:
+            dynamic_gesture_id = classification
         
-        return most_common_dg_id, self.dynamic_classifier_labels[dynamic_gesture_id]
+        return dynamic_gesture_id, self.dynamic_classifier_labels[dynamic_gesture_id]
 
     def get_hand_position(self, debug_image, hand_landmarks):
 

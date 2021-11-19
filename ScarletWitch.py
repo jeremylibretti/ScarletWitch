@@ -40,10 +40,15 @@ class ScarletWitch:
 
         self.w = WindowMgr()
 
+        self.freq = 57
+
+        self.click_on = False
+
     def run(self):
         self.running = True
 
         empty_landmarks = [[0, 0] for x in range(21)]
+        empty_d = self.create_empty_data()
 
     # Argument deconstruction
         cap_device = self.args.device
@@ -86,11 +91,13 @@ class ScarletWitch:
             win32gui.SetWindowPos(self.w.get_handle(), win32con.HWND_TOPMOST, 0,0,0,0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
 
     # Coordinate history
-        dynamic_data_length = math.ceil((self.get_data_length()-1)/42)
-        history_length = max(dynamic_data_length, 128)
-        if self.training:
-            history_length = None
-        landmark_history = deque(maxlen=history_length)
+        # dynamic_data_length = math.ceil((self.get_data_length()-1)/42)
+        # history_length = max(dynamic_data_length, 128)
+        # if self.training:
+        #     history_length = None
+        # landmark_history = deque(maxlen=history_length)
+        history_length = self.freq
+        landmark_history = deque([empty_d for x in range(history_length)], maxlen=history_length)
 
     # Create HandTracker, GestureClassifier
         tracker = HandTracker(self.args, vs).start()
@@ -123,7 +130,6 @@ class ScarletWitch:
                 win_dims = dims[self.show_information]
                 cv.resizeWindow(winname, win_dims[0], win_dims[1])
 
-
         # Camera capture
             image = vs.read()
             tracking_results = tracker.read()
@@ -137,36 +143,19 @@ class ScarletWitch:
                 # Bounding box calculation
                     self.brect = self.calc_bounding_rect(debug_image, hand_landmarks)
 
-                # Landmark calculation
-                    joint = np.zeros((21, 4))
-                    for j, lm in enumerate(hand_landmarks.landmark):
-                        joint[j] = [lm.x, lm.y, lm.z, lm.visibility]
-
-                    # Compute angles between joints
-                    v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
-                    v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
-                    v = v2 - v1 # [20, 3]
-                    # Normalize v
-                    v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
-
-                    # Get angle using arcos of dot product
-                    angle = np.arccos(np.einsum('nt,nt->n',
-                        v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
-                        v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
-
-                    angle = np.degrees(angle) # Convert radian to degree
-
-                    d = np.concatenate([joint.flatten(), angle])
+                # Joints angles calculation
+                    d = self.landmarks_to_angles(hand_landmarks)
+                    landmark_history.append(d)
 
         # Gesture classification
                 # Static
                     static_gesture_id, static_gesture_label = classifier.classify_static(d)
 
-                    # # Dynamic
-                    #     dynamic_gesture_id, dynamic_gesture_label = classifier.classify_dynamic(pre_processed_landmark_history_list)
+                # Dynamic
+                    dynamic_gesture_id, dynamic_gesture_label = classifier.classify_dynamic(landmark_history)
 
         # Gesture handling
-                    # self.handle_gestures(static_gesture_id, dynamic_gesture_id)
+                    self.handle_gestures(static_gesture_id, dynamic_gesture_id)
 
         # Image Drawing
                     debug_image = self.draw_bounding_rect(use_brect, debug_image,self.brect)
@@ -175,11 +164,8 @@ class ScarletWitch:
                         mp_drawing.draw_landmarks(debug_image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                         debug_image = self.draw_hand_info(debug_image, self.brect, static_gesture_label)
 
-            # else:
-            #     if self.training and self.record:
-            #         landmark_history.append(empty_landmarks)
-            #     elif not self.training:
-            #         landmark_history.append(empty_landmarks)
+            else:
+                landmark_history.append(empty_d)
 
             if self.show_information:
                 debug_image = self.draw_window_info(debug_image, win_dims, fps, dynamic_gesture_label)
@@ -509,20 +495,21 @@ class ScarletWitch:
     # Wrapper for all geture controls
     def handle_gestures(self, static_id, dynamic_id):
 
-        if not self.hand_pos_tracking and static_id == 1:  # Closed hand
-            self.hand_pos_tracking = True
-        elif self.hand_pos_tracking and static_id != 1:
-            self.hand_pos_tracking = False
+        # if not self.hand_pos_tracking and static_id == 1:  # Closed hand
+        #     self.hand_pos_tracking = True
+        # elif self.hand_pos_tracking and static_id != 1:
+        #     self.hand_pos_tracking = False
 
-        if not self.hand_pos_tracking:
-            self.prev = self.get_hand_pos()
-        else:
-            self.curr = self.get_hand_pos()
-            self.handle_hand_pos(self.curr, self.prev)
-            self.prev = self.curr
+        # if not self.hand_pos_tracking:
+        #     self.prev = self.get_hand_pos()
+        # else:
+        #     self.curr = self.get_hand_pos()
+        #     self.handle_hand_pos(self.curr, self.prev)
+        #     self.prev = self.curr
 
         if dynamic_id == 1:
             self.mode_view = not self.mode_view
+            self.click_on = not self.click_on
 
     def handle_hand_pos(self, cur_pos, prev_pos):
         delta_x = cur_pos[0] - prev_pos[0]
@@ -560,3 +547,47 @@ class ScarletWitch:
             writer.writerow([number, *data])
         
         return
+
+    def landmarks_to_angles(self, hand_landmarks):
+        joint = np.zeros((21, 4))
+        for j, lm in enumerate(hand_landmarks.landmark):
+            joint[j] = [lm.x, lm.y, lm.z, lm.visibility]
+
+        # Compute angles between joints
+        v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
+        v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
+        v = v2 - v1 # [20, 3]
+        # Normalize v
+        v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
+
+        # Get angle using arcos of dot product
+        angle = np.arccos(np.einsum('nt,nt->n',
+            v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
+            v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
+
+        angle = np.degrees(angle) # Convert radian to degree
+
+        d = np.concatenate([joint.flatten(), angle])
+
+        return d
+
+    def create_empty_data(self):
+        joint = np.zeros((21, 4))
+
+        # Compute angles between joints
+        v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
+        v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
+        v = v2 - v1 # [20, 3]
+        # Normalize v
+        # v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
+
+        # Get angle using arcos of dot product
+        angle = np.arccos(np.einsum('nt,nt->n',
+            v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
+            v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
+
+        angle = np.degrees(angle) # Convert radian to degree
+
+        d = np.concatenate([joint.flatten(), angle])
+
+        return d
