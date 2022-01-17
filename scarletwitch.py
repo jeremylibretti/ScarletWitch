@@ -1,242 +1,210 @@
-# Display camera view with annotations
-# Execute commands given gestures
-
 import sys
 import copy
-import csv
-import itertools
-import keyboard
-import pyautogui
-import win32gui
-import win32con
-import math
-import time, os
 
 import mediapipe as mp
-import cv2 as cv
 import numpy as np
+import cv2 as cv
 
 from utils import CvFpsCalc
 from handtracker import HandTracker
 from gestureclassifier import GestureClassifier
-from webcam import WebcamVideoStream
-from window import WindowMgr
 from collections import deque
+import webcam
 
 class ScarletWitch:
     def __init__(self, arguments, stdout=sys.stdout):
-        self.running = False
         self.args = arguments
         self.stdout = stdout
 
-        self.brect = [0, 0, 0, 0]
-        self.hand_pos_tracking = False
+        self.cap_device = arguments.device
+        self.cap_width = arguments.width
+        self.cap_height = arguments.height
+
+        self.show_info = True
         self.mode_view = True
-        self.training = False
-        self.training_mode = 1
-        self.label_id = -1
-        self.record = False
-        self.prev = (0, 0)
-        self.curr = (0, 0)
         self.last_key = ""
-        self.actions = ['open', 'closed', 'pointer', 'ok', 'peace', 'thumbs up']
-        self.datasets = [[] for i in range(10)]
-        self.last_label = 0
 
-        keyboard.add_hotkey('.', self.terminate)
+        self.brect = [0, 0, 0, 0]
+        self.use_brect = True
 
-        self.w = WindowMgr()
+        self.freq = 57 # Num of time frames in a dynamic gesture
+
+        self.mp_hands = mp.solutions.hands
+        self.mp_drawing = mp.solutions.drawing_utils
+
+        self.running = False
 
     def run(self):
         self.running = True
 
-        created_time = int(time.time())
-        os.makedirs('dataset', exist_ok=True)
-
-    # Argument deconstruction
-        cap_device = self.args.device
-        cap_width = self.args.width
-        cap_height = self.args.height
-
-        use_brect = True
-
-    # Camera preparation
-        vs = WebcamVideoStream(cap_width, cap_height, cap_device).start()
-
-    # FPS Measurement Initialization
-        cvFpsCalc = CvFpsCalc(buffer_len=10)
-
-    # Set stdout
+        # Set stdout
         stdout = sys.stdout
         sys.stdout = self.stdout
 
-    # Manage Windows
+        # Video stream from webcam
+        vs = webcam.MacVideoStream(self.cap_width, self.cap_height, self.cap_device).start()
 
-        winname = "Scarlet Witch Data Collection"
-        win_dims = [1280, 720]
-        win_width = 1280
-        win_height = 720
+        # Framerate calculator
+        cvFpsCalc = CvFpsCalc(buffer_len=10)
+
+        # Webcam display
+        winname = "Scarlet Witch"
+
+        dims = [[640, 360], [720, 480], [1280, 720], [1920, 1080]]
+        win_dims = dims[2]
 
         cv.namedWindow(winname, cv.WINDOW_NORMAL)
         cv.resizeWindow(winname, win_dims[0], win_dims[1])
-        cv.moveWindow(winname, 0,0)
+        cv.moveWindow(winname, 0, 0)
 
-        self.w.find_window_wildcard(".*Scarlet Witch.*")
-        if self.w.get_handle() != None:
-            win32gui.SetWindowPos(self.w.get_handle(), win32con.HWND_TOPMOST, 0,0,0,0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+        # Empty frame of hand landmarks
+        empty_d = self.create_empty_data()
 
-    # Create HandTracker, GestureClassifier
+        # Coordinate history
+        history_length = self.freq
+        landmark_history = deque([empty_d for x in range(history_length)], maxlen=history_length)
+
+        # Handtracking and gesture estimation threads
         tracker = HandTracker(self.args, vs).start()
+        classifier = GestureClassifier(history_length)
 
-    # MediaPipe hands model
-        mp_hands = mp.solutions.hands
-        mp_drawing = mp.solutions.drawing_utils
+        # Variable initialization
+        dynamic_gesture_id = -1
+        dynamic_gesture_label = ""
+        dynamic_gesture = [dynamic_gesture_id, dynamic_gesture_label]
 
-    # Main Loop
+        # Main Loop
         while self.running:
-        # Get fps
-            fps = cvFpsCalc.get()
-
-        # Process Key
-            # if self.training_mode != 2:
-            #     self.label_id = -1
-
-            self.label_id = -1
-
+            # Process keyb input
             key = cv.waitKey(10)
 
-            if key > -1:
-                self.last_key = chr(key)
-            else:
-                self.last_key = ""
+            self.key_action(key)
 
-            if key == 113:  # q
-                self.last_key = "q"
-                self.terminate(created_time)
-            # if key == 110: # n
-            #     self.training_mode = 0
-            # if key == 115: # s
-            #     self.training_mode = 1
-
-            if 48 <= key <= 57:  # 0 ~ 9
-                self.label_id = key - 48
-                self.last_label = self.label_id
-
-            # if key == 114: # r
-            #     self.record = True
-            # else:
-            #     self.record = False
-
-        # Camera capture
+            # Camera capture
             image = vs.read()
             tracking_results = tracker.read()
 
             image = cv.flip(image, 1)  # Mirror display
             debug_image = copy.deepcopy(image)
 
-        # Landmark processing
+            # Get fps
+            fps = cvFpsCalc.get()
+
+            # Landmark processing
             if tracking_results.multi_hand_landmarks is not None:
-                # for hand_landmarks, handedness in zip(tracking_results.multi_hand_landmarks, 
-                #                                         tracking_results.multi_handedness):
                 for hand_landmarks in tracking_results.multi_hand_landmarks:
 
-                # Bounding box calculation
-                    self.brect = self.calc_bounding_rect(debug_image, hand_landmarks)
+                    landmark_history, static_gesture, dynamic_gesture = self.process_landmarks(
+                        debug_image, hand_landmarks, landmark_history, classifier)
 
-                # Landmark calculation
-                    joint = np.zeros((21, 4))
-                    for j, lm in enumerate(hand_landmarks.landmark):
-                        joint[j] = [lm.x, lm.y, lm.z, lm.visibility]
+            else:
+                landmark_history.append(empty_d)
 
-                    # Compute angles between joints
-                    v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
-                    v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
-                    v = v2 - v1 # [20, 3]
-                    # Normalize v
-                    v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
-
-                    # Get angle using arcos of dot product
-                    angle = np.arccos(np.einsum('nt,nt->n',
-                        v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
-                        v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
-
-                    angle = np.degrees(angle) # Convert radian to degree
-
-                    angle_label = np.array([angle], dtype=np.float32)
-                    angle_label = np.append(angle_label, self.label_id)
-
-                    d = np.concatenate([joint.flatten(), angle_label])
-
-                    print(len(d))
-
-                    if self.label_id >= 0:
-                        self.datasets[self.label_id].append(d)
-                        print("added to dataset")
-
-        # Image Drawing
-                    mp_drawing.draw_landmarks(debug_image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                    debug_image = self.draw_bounding_rect(use_brect, debug_image,self.brect)
-        
-            debug_image = self.draw_window_info(debug_image, win_dims, fps)
+            if self.show_info:
+                debug_image = self.draw_window_info(debug_image, win_dims, fps, dynamic_gesture[1])
             cv.imshow(winname, debug_image)
 
-    # Shutdown
+        # Shutdown
         cv.destroyAllWindows()
         vs.stop()
         tracker.stop()
         print("ScarletWitch Session Ended")
 
-    # Reset stdout
+        # Reset stdout
         sys.stdout = stdout
 
-    def terminate(self, time):
-        # Write to the dataset files
-        # Static
-        # for d in range(len(self.datasets)):
-        #     data = self.datasets[d]
-        #     if len(data) > 0:
-        #         data = np.array(data)
-        #         np.save(os.path.join('dataset', f'raw_{self.actions[d]}_{time}'), data)
-        #         print("Wrote static data")
-        self.running = False
+    def create_empty_data(self):
+        joint = np.zeros((21, 4))
 
-    def draw_hand_info(self, image, brect, handedness, static_gesture_text):
-        cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
-                    (0, 0, 0), -1)
+        # Compute angles between joints
+        v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
+        v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
+        v = v2 - v1 # [20, 3]
+        # Normalize v
+        # v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
 
-        info_text = handedness.classification[0].label[0:]
-        if static_gesture_text != "":
-            info_text = info_text + ': ' + static_gesture_text
-        cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
-                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        # Get angle using arcos of dot product
+        angle = np.arccos(np.einsum('nt,nt->n',
+            v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
+            v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
 
-        return image
+        angle = np.degrees(angle) # Convert radian to degree
+
+        d = np.concatenate([joint.flatten(), angle])
+
+        return d
+
+    def key_action(self, key):
+        if key > -1:
+                self.last_key = chr(key)
+        else:
+            self.last_key = ""
+
+        if key == 27:  # ESC
+            self.last_key = "ESC"
+            self.terminate()
+
+    def process_landmarks(self, debug_img, landmarks, history, classifier):
+        # Bounding box calculation
+        self.brect = self.calc_bounding_rect(debug_img, landmarks)
+
+        # Joint angle calculations
+        landmark_data = self.landmarks_to_angles(landmarks)
+        history.append(landmark_data)
     
-    def draw_window_info(self, image, dimensions, fps):
-        # FPS
-        cv.putText(image, "FPS:" + str(fps), (10, 35), cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        static_gesture_id, static_gesture_label = classifier.classify_static(landmark_data)
+        dynamic_gesture_id, dynamic_gesture_label = classifier.classify_dynamic(history)
 
-        # Training
-        training_text = ["Off", "Static", "Dynamic"]
-        cv.putText(image, "Training: " + training_text[self.training_mode], (10, 70),
-                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        # Image Drawing
+        debug_image = self.draw_bounding_rect(debug_img, self.brect)
 
-        # Label id
-        cv.putText(image, "Label ID: " + str(self.label_id) + "", (10, 110),
-                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        self.mp_drawing.draw_landmarks(debug_image, landmarks, self.mp_hands.HAND_CONNECTIONS)
+        debug_image = self.draw_hand_info(debug_image, self.brect, static_gesture_label)
 
-        # Number of times recorded
-        cv.putText(image, "Sum: " + str(len(self.datasets[self.last_label])) + "", (10, 145),
-                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+        return history, [static_gesture_id, static_gesture_label], [dynamic_gesture_id, dynamic_gesture_label]
 
-        # Key Press
-        cv.putText(image, self.last_key, (dimensions[0] - 35, 35),
-                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
+    def landmarks_to_angles(self, hand_landmarks):
+        joint = np.zeros((21, 4))
+        for j, lm in enumerate(hand_landmarks.landmark):
+            joint[j] = [lm.x, lm.y, lm.z, lm.visibility]
 
-        return image
+        # Compute angles between joints
+        v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19], :3] # Parent joint
+        v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], :3] # Child joint
+        v = v2 - v1 # [20, 3]
+        # Normalize v
+        v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
 
-    def draw_bounding_rect(self, use_brect, image, brect):
-        if use_brect:
+        # Get angle using arcos of dot product
+        angle = np.arccos(np.einsum('nt,nt->n',
+            v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18],:], 
+            v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19],:])) # [15,]
+
+        angle = np.degrees(angle) # Convert radian to degree
+
+        d = np.concatenate([joint.flatten(), angle])
+
+        return d
+
+    def calc_bounding_rect(self, image, landmarks):
+        image_width, image_height = image.shape[1], image.shape[0]
+
+        landmark_array = np.empty((0, 2), int)
+
+        for _, landmark in enumerate(landmarks.landmark):
+            landmark_x = min(int(landmark.x * image_width), image_width - 1)
+            landmark_y = min(int(landmark.y * image_height), image_height - 1)
+
+            landmark_point = [np.array((landmark_x, landmark_y))]
+
+            landmark_array = np.append(landmark_array, landmark_point, axis=0)
+
+        x, y, w, h = cv.boundingRect(landmark_array)
+
+        return [x, y, x + w, y + h]
+
+    def draw_bounding_rect(self, image, brect):
+        if self.use_brect:
             # Outer rectangle
             cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[3]),
                         (0, 0, 0), 1)
@@ -430,123 +398,33 @@ class ScarletWitch:
 
         return image
 
-    def calc_bounding_rect(self, image, landmarks):
-        image_width, image_height = image.shape[1], image.shape[0]
+    def draw_hand_info(self, image, brect, static_gesture_text):
+        cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
+                    (0, 0, 0), -1)
 
-        landmark_array = np.empty((0, 2), int)
+        info_text = ""
+        if static_gesture_text != "":
+            info_text = static_gesture_text
 
-        for _, landmark in enumerate(landmarks.landmark):
-            landmark_x = min(int(landmark.x * image_width), image_width - 1)
-            landmark_y = min(int(landmark.y * image_height), image_height - 1)
+        cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-            landmark_point = [np.array((landmark_x, landmark_y))]
-
-            landmark_array = np.append(landmark_array, landmark_point, axis=0)
-
-        x, y, w, h = cv.boundingRect(landmark_array)
-
-        return [x, y, x + w, y + h]
-
-    def calc_landmark_list(self, image, landmarks):
-        image_width, image_height = image.shape[1], image.shape[0]
-
-        landmark_point = []
-
-        # Keypoint
-        for _, landmark in enumerate(landmarks.landmark):
-            landmark_x = min(int(landmark.x * image_width), image_width - 1)
-            landmark_y = min(int(landmark.y * image_height), image_height - 1)
-
-            landmark_point.append([landmark_x, landmark_y])
-
-        return landmark_point
-
-    def pre_process_landmark(self, landmark_list):
-        temp_landmark_list = copy.deepcopy(landmark_list)
-
-        # Convert to relative coordinates
-        base_x, base_y = 0, 0
-        for index, landmark_point in enumerate(temp_landmark_list):
-            if index == 0:
-                base_x, base_y = landmark_point[0], landmark_point[1]
-
-            temp_landmark_list[index][0] = temp_landmark_list[index][0] - base_x
-            temp_landmark_list[index][1] = temp_landmark_list[index][1] - base_y
-
-        # Convert to a one-dimensional list
-        temp_landmark_list = list(
-            itertools.chain.from_iterable(temp_landmark_list))
-
-        # Normalization
-        max_value = max(list(map(abs, temp_landmark_list)))
-
-        def normalize_(n):
-            return n / max_value if max_value > 0 else 0
-
-        temp_landmark_list = list(map(normalize_, temp_landmark_list))
-
-        return temp_landmark_list
-
-    def pre_process_landmark_history(self, landmark_history):
-        temp_landmark_history = list()
-
-        for index in range(len(landmark_history)):
-            landmarks = self.pre_process_landmark(landmark_history[index])
-            temp_landmark_history += landmarks
-
-        return temp_landmark_history
+        return image
     
-    # Wrapper for all geture controls
-    def handle_gestures(self, static_id, dynamic_id):
+    def draw_window_info(self, image, dimensions, fps, dynamic_gesture_text):
+        # FPS
+        cv.putText(image, "FPS:" + str(fps), (10, 35), cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-        if not self.hand_pos_tracking and static_id == 1:  # Closed hand
-            self.hand_pos_tracking = True
-        elif self.hand_pos_tracking and static_id != 1:
-            self.hand_pos_tracking = False
+        # Control toggle
+        mode_text = "On" if self.mode_view else "Off"
+        cv.putText(image, "Control Toggle: " + mode_text, (10, 70),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-        if not self.hand_pos_tracking:
-            self.prev = self.get_hand_pos()
-        else:
-            self.curr = self.get_hand_pos()
-            self.handle_hand_pos(self.curr, self.prev)
-            self.prev = self.curr
+        # Dynamic gesture
+        cv.putText(image, "Dynamic Gesture: " + dynamic_gesture_text, (10, 105),
+                cv.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 1, cv.LINE_AA)
 
-        if dynamic_id == 1:
-            self.mode_view = not self.mode_view
+        return image
 
-    def handle_hand_pos(self, cur_pos, prev_pos):
-        delta_x = cur_pos[0] - prev_pos[0]
-        delta_y = cur_pos[1] - prev_pos[1]
-        pyautogui.move(delta_x, delta_y)
-
-    def get_hand_pos(self):
-        x = (self.brect[0] + self.brect[2])/2
-        y = (self.brect[1] + self.brect[3])/2
-        hand_center = (round(x), round(y))
-
-        return hand_center
-
-    def get_data_length(self):
-        datafilename = 'model/dynamic_classifier/dynamic_data.csv'
-
-        with open(datafilename, 'r') as csv:
-            first_line = csv.readline()
-
-        ncol = first_line.count(',') + 1
-
-        return ncol
-
-    def log_csv(self, number, data):
-        # Static gesture data
-        if self.training_mode == 1:
-            csv_path = 'model/static_classifier/static_data.csv'
-
-        # Dynamic gesture data
-        else:
-            csv_path = 'model/dynamic_classifier/dynamic_data.csv'
-        
-        with open(csv_path, 'a', newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([number, *data])
-        
-        return
+    def terminate(self):
+            self.running = False

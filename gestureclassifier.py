@@ -38,7 +38,6 @@ class GestureClassifier:
         ##### Static Gesture Calculation
         # Hand sign classification [0: Open, 1: Closed, 2: Pointer, 3: OK]
         static_gesture_id = self.static_classifier(landmarks)
-        print(static_gesture_id)
         
         return static_gesture_id, self.static_classifier_labels[static_gesture_id]
 
@@ -47,7 +46,6 @@ class GestureClassifier:
         # Dynamic gesture classification
         dynamic_gesture_id = 0
         classification = self.dynamic_classifier(landmark_history)
-        # print(classification)
             
         # Calculates the gesture IDs in the latest detection
         self.dynamic_gesture_history.append(classification)

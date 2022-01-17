@@ -2,8 +2,24 @@
 
 import scarletwitch
 import argparse
-import create_static_dataset
-import create_dynamic_dataset
+
+import collect_static
+import collect_dynamic
+
+def main():
+    # Argument parsing
+    args = get_args()
+
+    # ScarletWitch creation
+    device = scarletwitch.ScarletWitch(args)
+
+    if args.collect_static:
+        device = collect_static.StaticDataCollection(args)
+    elif args.collect_dynamic:
+        device = collect_dynamic.DynamicDataCollection(args)
+
+    # ScarletWitch run
+    device.run()
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -27,22 +43,5 @@ def get_args():
 
     return args
 
-def main():
-    # Argument parsing
-    args = get_args()
-
-    # ScarletWitch creation
-    device = scarletwitch.ScarletWitch(args)
-
-    if args.collect_static:
-        device = create_static_dataset.ScarletWitch(args)
-    elif args.collect_dynamic:
-        device = create_dynamic_dataset.ScarletWitch(args)
-
-    # ScarletWitch run
-    device.run()
-
 if __name__ == '__main__':
     main()
-
-##################Testing########################
