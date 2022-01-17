@@ -18,9 +18,9 @@ A project for developing webcam based static and dynamic gesture recognition to 
 2. Install required modules
     * Navigate to project directory
     * Run `pip install -r requirements.txt`
-~~3. Finish pywin32 installation
-    * Navigate to virutal environment directory
-    * Run `python Scripts/pywin32_postinstall.py -install`~~
+3. <s>Finish pywin32 installation</s>
+    * <s>Navigate to virutal environment directory</s>
+    * <s>Run `python Scripts/pywin32_postinstall.py -install`</s>
 
 ## Usage
 ### Gesture Recognition Demo
