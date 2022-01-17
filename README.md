@@ -38,21 +38,6 @@ Detection confidence threshold (Default：0.7)
 * --min_tracking_confidence<br>
 Tracking confidence threshold (Default：0.5)
 
-parser.add_argument("--device", type=int, default=0)
-    parser.add_argument("--width", help='cap width', type=int, default=854)
-    parser.add_argument("--height", help='cap height', type=int, default=480)
-
-    parser.add_argument('--collect_static', action='store_true')
-    parser.add_argument('--collect_dynamic', action='store_true')
-    parser.add_argument("--min_detection_confidence",
-                        help='min_detection_confidence',
-                        type=float,
-                        default=0.7)
-    parser.add_argument("--min_tracking_confidence",
-                        help='min_tracking_confidence',
-                        type=int,
-                        default=0.5)
-
 ### Gameplay
 Not yet implemented
 
