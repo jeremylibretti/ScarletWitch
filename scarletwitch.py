@@ -1,3 +1,4 @@
+from os import stat
 import sys
 import copy
 
@@ -33,6 +34,12 @@ class ScarletWitch:
         self.mp_drawing = mp.solutions.drawing_utils
 
         self.running = False
+
+        self.position_tracking = False
+        self.control_mode = False # False: Camera, True: Body
+        self.current_position = (0, 0)
+        self.previous_position = (0, 0)
+        self.hand_center = (0, 0)
 
     def run(self):
         self.running = True
@@ -99,6 +106,37 @@ class ScarletWitch:
 
             else:
                 landmark_history.append(empty_d)
+                self.position_tracking = False
+
+            # Gesture/control
+            if self.position_tracking:
+                landmarks = tracking_results.multi_hand_landmarks[0]
+                brect = self.calc_bounding_rect(debug_image, landmarks)
+                self.hand_center = self.get_hand_center(brect)
+                self.current_position = self.hand_center
+
+                if static_gesture == 1: # Hand closed
+                    cur_pos = self.current_position
+                    prev_pos = self.previous_position
+
+                    delta_x = cur_pos[0] - prev_pos[0]
+                    delta_y = cur_pos[1] - prev_pos[1]
+
+                    if self.control_mode and static_gesture == 1: # Camera
+                        pyautogui.move(delta_x, delta_y)
+
+                    else: # Body
+                        margin = 1
+                        if delta_x > margin:
+                            pyautogui.press('d') # Right
+                        elif delta_x < margin*-1:
+                            pyautogui.press('a') # Left
+
+                        if delta_y > margin:
+                            pyautogui.press('s') # Backwards
+                        elif delta_y < margin*-1:
+                            pyautogui.press('w') # Forwards
+
 
             if self.show_info:
                 debug_image = self.draw_window_info(debug_image, win_dims, fps, dynamic_gesture[1])
@@ -143,6 +181,10 @@ class ScarletWitch:
         if key == 27:  # ESC
             self.last_key = "ESC"
             self.terminate()
+
+        if key == 112:  # P
+            self.position_tracking = not self.position_tracking
+            print(f"Position tracking set to {str(self.position_tracking).upper()}")
 
     def process_landmarks(self, debug_img, landmarks, history, classifier):
         # Bounding box calculation
