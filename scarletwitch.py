@@ -12,6 +12,8 @@ from gestureclassifier import GestureClassifier
 from collections import deque
 import webcam
 
+import pyautogui
+
 class ScarletWitch:
     def __init__(self, arguments, stdout=sys.stdout):
         self.args = arguments
@@ -40,6 +42,7 @@ class ScarletWitch:
         self.current_position = (0, 0)
         self.previous_position = (0, 0)
         self.hand_center = (0, 0)
+        self.tracking_hand = False
 
     def run(self):
         self.running = True
@@ -104,38 +107,45 @@ class ScarletWitch:
                     landmark_history, static_gesture, dynamic_gesture = self.process_landmarks(
                         debug_image, hand_landmarks, landmark_history, classifier)
 
+                self.tracking_hand = True
+
             else:
                 landmark_history.append(empty_d)
-                self.position_tracking = False
+                self.tracking_hand = False
 
             # Gesture/control
             if self.position_tracking:
-                landmarks = tracking_results.multi_hand_landmarks[0]
-                brect = self.calc_bounding_rect(debug_image, landmarks)
-                self.hand_center = self.get_hand_center(brect)
-                self.current_position = self.hand_center
+                # self.current_position = self.previous_position
 
-                if static_gesture == 1: # Hand closed
-                    cur_pos = self.current_position
-                    prev_pos = self.previous_position
+                if self.tracking_hand:
+                    landmarks = tracking_results.multi_hand_landmarks[0]
+                    brect = self.calc_bounding_rect(debug_image, landmarks)
+                    self.hand_center = ((brect[0] + brect[2])/2, (brect[1] + brect[3])/2)
+                    self.current_position = self.hand_center
 
-                    delta_x = cur_pos[0] - prev_pos[0]
-                    delta_y = cur_pos[1] - prev_pos[1]
+                    if static_gesture[0] == 1: # Hand closed
+                        cur_pos = self.current_position
+                        prev_pos = self.previous_position
 
-                    if self.control_mode and static_gesture == 1: # Camera
-                        pyautogui.move(delta_x, delta_y)
+                        delta_x = cur_pos[0] - prev_pos[0]
+                        delta_y = cur_pos[1] - prev_pos[1]
 
-                    else: # Body
-                        margin = 1
-                        if delta_x > margin:
-                            pyautogui.press('d') # Right
-                        elif delta_x < margin*-1:
-                            pyautogui.press('a') # Left
+                        if self.control_mode: # Camera
+                            pyautogui.move(delta_x, delta_y)
 
-                        if delta_y > margin:
-                            pyautogui.press('s') # Backwards
-                        elif delta_y < margin*-1:
-                            pyautogui.press('w') # Forwards
+                        else: # Body
+                            margin = 1
+                            if delta_x > margin:
+                                pyautogui.press('d') # Right
+                            elif delta_x < margin*-1:
+                                pyautogui.press('a') # Left
+
+                            if delta_y > margin:
+                                pyautogui.press('s') # Backwards
+                            elif delta_y < margin*-1:
+                                pyautogui.press('w') # Forwards
+
+                self.previous_position = self.current_position
 
 
             if self.show_info:
@@ -184,7 +194,14 @@ class ScarletWitch:
 
         if key == 112:  # P
             self.position_tracking = not self.position_tracking
-            print(f"Position tracking set to {str(self.position_tracking).upper()}")
+            print(f"Position tracking set to {str(self.position_tracking).upper()}\n")
+
+        if key == 99: # C
+            self.control_mode = not self.control_mode
+            control = "Body"
+            if self.control_mode:
+                control = "Camera"
+            print(f"Control mode switch to {control}\n")
 
     def process_landmarks(self, debug_img, landmarks, history, classifier):
         # Bounding box calculation
