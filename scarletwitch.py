@@ -1,3 +1,4 @@
+from operator import truediv
 from os import stat
 import sys
 import copy
@@ -123,27 +124,25 @@ class ScarletWitch:
                     self.hand_center = ((brect[0] + brect[2])/2, (brect[1] + brect[3])/2)
                     self.current_position = self.hand_center
 
+                    cur_pos = self.current_position
+                    prev_pos = self.previous_position
+
+                    delta_x = cur_pos[0] - prev_pos[0]
+                    delta_y = cur_pos[1] - prev_pos[1]
+
+                    # delta_depth = self.get_change_in_distance()
+
                     if static_gesture[0] == 1: # Hand closed
-                        cur_pos = self.current_position
-                        prev_pos = self.previous_position
+                        m = 5
+                        pyautogui.move(delta_x*m, delta_y*m)
 
-                        delta_x = cur_pos[0] - prev_pos[0]
-                        delta_y = cur_pos[1] - prev_pos[1]
-
-                        if self.control_mode: # Camera
-                            pyautogui.move(delta_x, delta_y)
-
-                        else: # Body
-                            margin = 1
-                            if delta_x > margin:
-                                pyautogui.press('d') # Right
-                            elif delta_x < margin*-1:
-                                pyautogui.press('a') # Left
-
-                            if delta_y > margin:
-                                pyautogui.press('s') # Backwards
-                            elif delta_y < margin*-1:
-                                pyautogui.press('w') # Forwards
+                    if static_gesture[0] == 2: # Pointer
+                        if not walking:
+                            walking = True
+                            pyautogui.keyDown('w')
+                    else:
+                        walking = False
+                        pyautogui.keyUp('w')
 
                 self.previous_position = self.current_position
 
